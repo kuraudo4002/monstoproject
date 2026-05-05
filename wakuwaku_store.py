@@ -2,6 +2,8 @@
 
 import re
 import time
+import os
+import json
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -68,7 +70,16 @@ def get_client():
     if _cache["client"] is not None and not _is_cache_expired():
         return _cache["client"]
 
-    creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        creds = Credentials.from_service_account_info(
+            creds_dict, scopes=SCOPES
+        )
+    else:
+        creds = Credentials.from_service_account_file(
+            "credentials.json", scopes=SCOPES
+        )
     client = gspread.authorize(creds)
 
     if _is_cache_expired():
