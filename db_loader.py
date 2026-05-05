@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import os
+import json
 import gspread
 import pandas as pd
 from google.oauth2.service_account import Credentials
@@ -53,9 +55,16 @@ _sheet_color_cache = {}
 def get_client():
     global _client_cache
     if _client_cache is None:
-        creds = Credentials.from_service_account_file(
-            "credentials.json", scopes=SCOPES
-        )
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+        if creds_json:
+            creds_dict = json.loads(creds_json)
+            creds = Credentials.from_service_account_info(
+                creds_dict, scopes=SCOPES
+            )
+        else:
+            creds = Credentials.from_service_account_file(
+                "credentials.json", scopes=SCOPES
+            )
         _client_cache = gspread.authorize(creds)
     return _client_cache
 
