@@ -2066,6 +2066,28 @@ def merge_locked_with_optimizer_plan(display_current, aligned_decisions, planned
     return result[:3]
 
 
+
+def infer_status_from_current_and_suggest(current, suggest):
+    current = [normalize_text(x) for x in current if normalize_text(x)]
+    suggest = [normalize_text(x) for x in suggest if normalize_text(x)]
+
+    if not suggest:
+        return "unselected", 0
+
+    matched = 0
+    remaining = current[:]
+
+    for s in suggest:
+        if s in remaining:
+            matched += 1
+            remaining.remove(s)
+
+    if len(current) >= 3 and matched >= len(suggest):
+        return "fixed", 0
+
+    return "unselected", max(0, len(suggest) - matched)
+
+
 def optimizer_mode_from_suggest(suggest):
     attack_count = sum(1 for f in suggest if optimizer_is_attack_fruit(f))
     support_count = sum(1 for f in suggest if is_support_fruit(f) or is_friend_fruit(f))
@@ -2092,6 +2114,18 @@ def build_plan_view_rows():
         stored_decisions = get_fruit_decisions(char_id)
         aligned_decisions = align_decisions_to_display(display_current, stored_decisions)
 
+        refine_mode = "auto"
+        manual_suggest = ["", "", ""]
+
+        if stored_decisions:
+            first_mode = normalize_text(stored_decisions[0].get("mode", ""))
+            if first_mode in ["auto", "manual"]:
+                refine_mode = first_mode
+
+            for i in range(3):
+                if i < len(stored_decisions):
+                    manual_suggest[i] = normalize_text(stored_decisions[i].get("manual_suggest", ""))
+
         suitable_quests = get_all_suitable_quests_for_char(
             char_name=row.get("pure_name", "") or row.get("title_name", ""),
             priority_quests=quests,
@@ -2108,6 +2142,8 @@ def build_plan_view_rows():
             "display_current": display_current,
             "original_suggest": original_suggest,
             "aligned_decisions": aligned_decisions,
+            "refine_mode": refine_mode,
+            "manual_suggest": manual_suggest,
             "quests": row.get("quests", []),
         })
 
@@ -2142,22 +2178,27 @@ def build_plan_view_rows():
     final_rows = []
 
     for row in rows:
-        planned = optimizer_suggest_by_char_id.get(row["char_id"], row["original_suggest"])
+        auto_planned = optimizer_suggest_by_char_id.get(row["char_id"], row["original_suggest"])
+
+        if row.get("refine_mode") == "manual":
+            planned = [x for x in row.get("manual_suggest", []) if normalize_text(x)]
+            if not planned:
+                planned = auto_planned
+        else:
+            planned = auto_planned
+
         recomputed = merge_locked_with_optimizer_plan(
             row["display_current"],
             row["aligned_decisions"],
             planned,
         )
 
-        decision_values = [d.get("decision", "unselected") for d in row["aligned_decisions"]]
-        status, remain_count = infer_status_from_decisions(recomputed, decision_values)
+        status, remain_count = infer_status_from_current_and_suggest(
+            row["display_current"],
+            recomputed,
+        )
 
         locked_fruits = []
-        for fruit, decision_row in zip(row["display_current"], row["aligned_decisions"]):
-            fruit = normalize_text(fruit)
-            decision = normalize_decision_value(decision_row.get("decision", ""))
-            if decision == "fixed" and fruit:
-                locked_fruits.append(fruit)
 
         mode = optimizer_mode_from_suggest(recomputed)
 
@@ -2184,6 +2225,8 @@ def build_plan_view_rows():
             "status_label": status_label(status),
             "remain_count": remain_count,
             "display_rows": display_rows,
+            "refine_mode": row.get("refine_mode", "auto"),
+            "manual_suggest": row.get("manual_suggest", ["", "", ""]),
             "mode": mode,
             "mode_label": mode_label(mode),
             "quests": row.get("quests", []),
@@ -2449,7 +2492,7 @@ button {
 
   display: grid;
 
-  grid-template-columns: 50px minmax(0, 1.35fr) minmax(0, 0.72fr) minmax(0, 0.93fr);
+  grid-template-columns: 50px minmax(0, 1.35fr) minmax(0, 1.1fr);
 
   gap: 6px;
 
@@ -2817,6 +2860,54 @@ function makeDecisionSelect(selectId, selectedValue) {
 
 
 
+
+function makeModeSelect(selectId, selectedValue) {
+  const select = document.createElement("select");
+  select.id = selectId;
+  select.className = "decision-select";
+
+  const options = [
+    { value: "auto", label: "??" },
+    { value: "manual", label: "??" },
+  ];
+
+  const normalizedValue = selectedValue || "auto";
+
+  options.forEach(item => {
+    const op = document.createElement("option");
+    op.value = item.value;
+    op.textContent = item.label;
+    if (item.value === normalizedValue) op.selected = true;
+    select.appendChild(op);
+  });
+
+  return select;
+}
+
+function toggleSuggestMode(idx) {
+  const mode = document.getElementById(`mode-${idx}`)?.value || "auto";
+
+  for (let i = 0; i < 3; i++) {
+    const chip = document.getElementById(`suggest-chip-${idx}-${i}`);
+    const select = document.getElementById(`suggest-${idx}-${i}`);
+
+    if (!chip || !select) continue;
+
+    if (mode === "manual") {
+      chip.style.display = "none";
+      select.style.display = "";
+    } else {
+      chip.style.display = "";
+      select.style.display = "none";
+    }
+  }
+}
+
+function makeSuggestSelect(selectId, selectedValue) {
+  return makeFruitSelect(selectId, selectedValue);
+}
+
+
 function getStateClass(status) {
 
   if (status === "fixed") return "state state-kakutei";
@@ -2832,31 +2923,23 @@ function getStateClass(status) {
 
 
 async function saveRowSettings(charId, idx) {
-
   const params = new URLSearchParams();
-
   params.set("char_id", charId);
 
-
+  const mode = document.getElementById(`mode-${idx}`)?.value || "auto";
+  params.set("mode", mode);
 
   for (let i = 0; i < 3; i++) {
-
     const fruit = document.getElementById(`fruit-${idx}-${i}`)?.value || "";
-
-    const decision = document.getElementById(`decision-${idx}-${i}`)?.value || "unselected";
+    const suggest = document.getElementById(`suggest-${idx}-${i}`)?.value || "";
 
     params.append("fruit", fruit);
-
-    params.append("decision", decision);
-
+    params.append("suggest", suggest);
+    params.append("decision", "unselected");
   }
 
-
-
   await fetch(`/refine/row/save?${params.toString()}`);
-
   await loadPlan();
-
 }
 
 
@@ -3112,10 +3195,20 @@ async function loadPlan() {
 
 
     const mode = document.createElement("div");
-
     mode.className = "line small";
 
-    mode.textContent = `\u518d\u63a8\u5968\u30e2\u30fc\u30c9: ${row.mode_label || "\u5143\u63a8\u5968\u7dad\u6301"}`;
+    const modeLabel = document.createElement("span");
+    modeLabel.textContent = "?????: ";
+    mode.appendChild(modeLabel);
+
+    const modeSelect = makeModeSelect(`mode-${idx}`, row.refine_mode || "auto");
+    modeSelect.onchange = () => toggleSuggestMode(idx);
+    mode.appendChild(modeSelect);
+
+    const autoHint = document.createElement("span");
+    autoHint.className = "small";
+    autoHint.textContent = `?AI?: ${row.mode_label || "?????"}`;
+    mode.appendChild(autoHint);
 
     card.appendChild(mode);
 
@@ -3126,15 +3219,9 @@ async function loadPlan() {
     head.className = "grid-head";
 
     head.innerHTML = `
-
-      <div class="col-center">\u67a0</div>
-
-      <div>\u73fe\u5728</div>
-
-      <div>\u63a8\u5968</div>
-
-      <div>\u53b3\u9078\u5224\u5b9a</div>
-
+      <div class="col-center">?</div>
+      <div>??</div>
+      <div>??</div>
     `;
 
     card.appendChild(head);
@@ -3170,22 +3257,20 @@ async function loadPlan() {
       const suggestWrap = document.createElement("div");
 
       const suggestChip = document.createElement("span");
-
+      suggestChip.id = `suggest-chip-${idx}-${i}`;
       suggestChip.className = "suggest-chip";
-
-      suggestChip.textContent = r.suggest || "\u306a\u3057";
-
+      suggestChip.textContent = r.suggest || "??";
       suggestWrap.appendChild(suggestChip);
 
+      const suggestSelect = makeSuggestSelect(`suggest-${idx}-${i}`, r.suggest || "");
+      suggestSelect.style.display = (row.refine_mode || "auto") === "manual" ? "" : "none";
+      suggestWrap.appendChild(suggestSelect);
+
+      if ((row.refine_mode || "auto") === "manual") {
+        suggestChip.style.display = "none";
+      }
+
       grid.appendChild(suggestWrap);
-
-
-
-      const decisionWrap = document.createElement("div");
-
-      decisionWrap.appendChild(makeDecisionSelect(`decision-${idx}-${i}`, r.decision || "unselected"));
-
-      grid.appendChild(decisionWrap);
 
 
 
@@ -3264,30 +3349,29 @@ initPage();
 @app.get("/refine/row/save")
 
 def refine_row_save(
-
     char_id: str,
-
     fruit: list[str] = Query(default=[]),
-
     decision: list[str] = Query(default=[]),
-
+    suggest: list[str] = Query(default=[]),
+    mode: str = "auto",
 ):
 
     cleaned_fruits = []
-
     cleaned_decisions = []
+    cleaned_suggests = []
 
-
+    mode = normalize_text(mode)
+    if mode not in ["auto", "manual"]:
+        mode = "auto"
 
     for i in range(3):
-
         f = normalize_text(fruit[i]) if i < len(fruit) else ""
-
-        d = normalize_decision_value(decision[i] if i < len(decision) else "unselected")
+        d = "unselected"
+        s = normalize_text(suggest[i]) if i < len(suggest) else ""
 
         cleaned_fruits.append(f)
-
         cleaned_decisions.append(d)
+        cleaned_suggests.append(s)
 
 
 
@@ -3300,18 +3384,23 @@ def refine_row_save(
     for i in range(3):
 
         rows.append({
-
             "fruit": cleaned_fruits[i],
-
             "decision": cleaned_decisions[i],
-
+            "mode": mode,
+            "manual_suggest": cleaned_suggests[i],
         })
 
 
 
     set_fruit_decisions(char_id, rows)
 
-    return {"status": "ok", "saved_fruits": cleaned_fruits, "saved_decisions": cleaned_decisions}
+    return {
+        "status": "ok",
+        "saved_fruits": cleaned_fruits,
+        "saved_decisions": cleaned_decisions,
+        "saved_suggests": cleaned_suggests,
+        "mode": mode,
+    }
 
 
 
