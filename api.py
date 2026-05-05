@@ -5,6 +5,7 @@
 import json
 
 import re
+import time
 
 from collections import defaultdict
 
@@ -49,6 +50,30 @@ from refine_plan_store import (
 
 
 app = FastAPI()
+
+
+WAKUWAKU_CACHE = {}
+WAKUWAKU_CACHE_TTL = 300
+
+def cached_get_wakuwaku(char_id):
+    now = time.time()
+    cached = WAKUWAKU_CACHE.get(char_id)
+
+    if cached:
+        saved_at, value = cached
+        if now - saved_at < WAKUWAKU_CACHE_TTL:
+            return value
+
+    value = get_wakuwaku(char_id)
+    WAKUWAKU_CACHE[char_id] = (now, value)
+    return value
+
+def clear_wakuwaku_cache(char_id=None):
+    if char_id:
+        WAKUWAKU_CACHE.pop(char_id, None)
+    else:
+        WAKUWAKU_CACHE.clear()
+
 
 
 
@@ -2074,7 +2099,7 @@ def build_plan_view_rows():
 
     for row in frozen:
         char_id = row["char_id"]
-        raw_current_wakuwaku = get_wakuwaku(char_id)
+        raw_current_wakuwaku = cached_get_wakuwaku(char_id)
         original_suggest = [normalize_text(x) for x in row.get("suggest_wakuwaku", []) if normalize_text(x)]
 
         display_current = reorder_current_by_suggest(raw_current_wakuwaku, original_suggest)
