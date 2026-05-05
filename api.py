@@ -56,25 +56,11 @@ WAKUWAKU_CACHE = {}
 WAKUWAKU_CACHE_TTL = 300
 
 def cached_get_wakuwaku(char_id):
-    now = time.time()
-    cached = WAKUWAKU_CACHE.get(char_id)
+    return get_wakuwaku(char_id)
 
-    if cached:
-        saved_at, value = cached
-        if now - saved_at < WAKUWAKU_CACHE_TTL:
-            return value
-
-    value = get_wakuwaku(char_id)
-    WAKUWAKU_CACHE[char_id] = (now, value)
-    return value
 
 def clear_wakuwaku_cache(char_id=None):
-    if char_id:
-        WAKUWAKU_CACHE.pop(char_id, None)
-    else:
-        WAKUWAKU_CACHE.clear()
-
-
+    return None
 
 
 FRUITS = [
