@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>モンスト編成</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    input {
+      padding: 8px;
+      font-size: 16px;
+    }
+
+    button {
+      padding: 8px 12px;
+      font-size: 16px;
+      margin-left: 10px;
+      cursor: pointer;
+    }
+
+    #result {
+      margin-top: 20px;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      max-width: 500px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>★★新しい画面★★</h1>
+
+  <input id="quest" placeholder="庭園1">
+  <button onclick="loadParty()">実行</button>
+
+  <div id="result"></div>
+
+  <script>
+    async function loadParty() {
+      const quest = document.getElementById("quest").value;
+
+      const res = await fetch(`http://127.0.0.1:8000/party?quest=${quest}`);
+      const data = await res.json();
+
+      const div = document.getElementById("result");
+      div.innerHTML = "";
+
+      data.party.forEach(row => {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.textContent = `${row.slot}：${row.text}`;
+        div.appendChild(card);
+      });
+    }
+  </script>
+
+</body>
+</html>

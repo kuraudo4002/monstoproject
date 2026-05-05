@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>モンスト編成</title>
+</head>
+<body>
+
+<h1>モンスト編成ツール</h1>
+
+<input type="text" id="quest" placeholder="クエスト名（例：庭園1）">
+<button onclick="loadParty()">編成する</button>
+
+<h2>結果</h2>
+<div id="result"></div>
+
+<script>
+async function loadParty() {
+  const quest = document.getElementById("quest").value;
+
+  const res = await fetch(`http://127.0.0.1:8000/party?quest=${quest}`);
+  const data = await res.json();
+
+  const resultDiv = document.getElementById("result");
+  resultDiv.innerHTML = "";
+
+  data.party.forEach(row => {
+    const p = document.createElement("p");
+    p.textContent = `${row.slot}：${row.text}`;
+    resultDiv.appendChild(p);
+  });
+}
+</script>
+
+</body>
+</html>
