@@ -2,8 +2,15 @@
 
 import json
 import os
+import gspread
+from google.oauth2.service_account import Credentials
+from gspread.exceptions import WorksheetNotFound
 
-FILE_PATH = "refine_plan_data.json"
+SHEET_NAME = "_refine_plan_store"
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+_client_cache = None
+_spreadsheet_cache = None
 
 
 def default_data():
@@ -16,14 +23,74 @@ def default_data():
     }
 
 
-def load_data():
-    if not os.path.exists(FILE_PATH):
-        return default_data()
+def get_spreadsheet_id():
+    sid = os.environ.get("SPREADSHEET_ID")
+    if sid:
+        return sid
+
+    for module_name in ["db_loader", "wakuwaku_store", "service"]:
+        try:
+            module = __import__(module_name)
+            sid = getattr(module, "SPREADSHEET_ID", "")
+            if sid:
+                return sid
+        except Exception:
+            pass
+
+    raise RuntimeError("SPREADSHEET_ID が見つかりません")
+
+
+def get_client():
+    global _client_cache
+
+    if _client_cache is not None:
+        return _client_cache
+
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    else:
+        creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+
+    _client_cache = gspread.authorize(creds)
+    return _client_cache
+
+
+def get_spreadsheet():
+    global _spreadsheet_cache
+
+    if _spreadsheet_cache is not None:
+        return _spreadsheet_cache
+
+    client = get_client()
+    _spreadsheet_cache = client.open_by_key(get_spreadsheet_id())
+    return _spreadsheet_cache
+
+
+def get_store_sheet():
+    spreadsheet = get_spreadsheet()
 
     try:
-        with open(FILE_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except:
+        ws = spreadsheet.worksheet(SHEET_NAME)
+    except WorksheetNotFound:
+        ws = spreadsheet.add_worksheet(title=SHEET_NAME, rows=10, cols=2)
+        ws.update("A1:B1", [["key", "json"]])
+        ws.update("A2:B2", [["data", json.dumps(default_data(), ensure_ascii=False)]])
+
+    return ws
+
+
+def load_data():
+    try:
+        ws = get_store_sheet()
+        raw = ws.acell("B2").value
+        if not raw:
+            return default_data()
+
+        data = json.loads(raw)
+    except Exception:
         return default_data()
 
     base = default_data()
@@ -32,8 +99,9 @@ def load_data():
 
 
 def save_data(data):
-    with open(FILE_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    ws = get_store_sheet()
+    raw = json.dumps(data, ensure_ascii=False)
+    ws.update("A2:B2", [["data", raw]])
 
 
 def get_priority_quests():
@@ -88,6 +156,8 @@ def get_quest_status(quest_name):
 
 def set_refine_done(quest_name, value: bool):
     data = load_data()
+    if "quest_status" not in data:
+        data["quest_status"] = {}
     if quest_name not in data["quest_status"]:
         data["quest_status"][quest_name] = {
             "refine_done": False,
@@ -100,6 +170,8 @@ def set_refine_done(quest_name, value: bool):
 
 def set_cleared(quest_name, value: bool):
     data = load_data()
+    if "quest_status" not in data:
+        data["quest_status"] = {}
     if quest_name not in data["quest_status"]:
         data["quest_status"][quest_name] = {
             "refine_done": False,
@@ -112,6 +184,9 @@ def set_cleared(quest_name, value: bool):
 
 def save_clear_history(quest_name, party_rows):
     data = load_data()
+    if "clear_history" not in data:
+        data["clear_history"] = {}
+
     data["clear_history"][quest_name] = {
         "party": party_rows
     }
