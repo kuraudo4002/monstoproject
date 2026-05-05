@@ -2909,7 +2909,9 @@ async function loadPlan() {
 
   const summaryBody = document.createElement("div");
 
-  summaryBody.textContent = (data.priority_quests || []).join(" / ");
+  summaryBody.textContent = (data.priority_quests || [])
+    .map((q, i) => `${i + 1}. ${q}`)
+    .join(" / ");
 
   summary.appendChild(summaryBody);
 
@@ -3228,13 +3230,13 @@ async function loadPlan() {
 
 
 async function initPage() {
-
   await loadQuestOptions();
-
   await loadSavedPriorityQuests();
 
-  await loadPlan();
+  // Render???????select????????????????
+  setTimeout(loadSavedPriorityQuests, 200);
 
+  await loadPlan();
 }
 
 
