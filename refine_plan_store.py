@@ -196,3 +196,21 @@ def save_clear_history(quest_name, party_rows):
 def get_clear_history(quest_name):
     data = load_data()
     return data.get("clear_history", {}).get(quest_name, {})
+TEAM_SLOT_STATE = {}
+
+
+def get_team_slot_state(quest):
+    return TEAM_SLOT_STATE.get(str(quest), {})
+
+
+def set_team_slot_state(quest, slot_no, mode, char_id):
+    quest = str(quest)
+    slot_key = f"slot{slot_no}"
+
+    if quest not in TEAM_SLOT_STATE:
+        TEAM_SLOT_STATE[quest] = {}
+
+    TEAM_SLOT_STATE[quest][slot_key] = {
+        "mode": str(mode),
+        "char_id": str(char_id),
+    }
