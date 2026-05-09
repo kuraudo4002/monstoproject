@@ -1991,6 +1991,17 @@ async function loadPlan() {
     grouped.get(category).push(row);
   });
 
+  ["メイン", "サブ", "サブサブ"].forEach(account => {
+    const rows = grouped.get(account) || [];
+    rows.sort((a, b) => {
+      const t1 = String(a.title_name || "");
+      const t2 = String(b.title_name || "");
+      const tDiff = t1.localeCompare(t2, "ja");
+      if (tDiff !== 0) return tDiff;
+      return String(a.char_id || "").localeCompare(String(b.char_id || ""));
+    });
+  });
+
   const accountGrid = document.createElement("div");
   accountGrid.className = "unfinished-account-grid";
 
@@ -2041,7 +2052,14 @@ initPage();
 """
 
     html = html.replace("__FRUITS_JS__", fruits_js)
-    return html
+    return HTMLResponse(
+        content=html,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 @app.get("/refine/row/save")
 def refine_row_save(
