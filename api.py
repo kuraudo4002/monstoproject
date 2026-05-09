@@ -1967,38 +1967,26 @@ async function loadPlan() {
       return "";
     }
 
-    const beforeBracket = value.split(/[（(]/)[0] || "";
-    if (beforeBracket.includes(":") || beforeBracket.includes("：")) {
-      const parts = beforeBracket.split(/[:：]/).filter(Boolean);
-      const right = parts.length > 1 ? pickToken(parts[parts.length - 1]) : "";
-      if (right) return right;
-      const left = parts.length > 0 ? pickToken(parts[0]) : "";
-      if (left) return left;
-    }
-
-    const front = pickToken(beforeBracket);
-    if (front) return front;
-
     const bracketMatch = value.match(/[（(](メイン|サブサブ|サブ)(?:[:：](メイン|サブサブ|サブ))?[）)]/);
     if (bracketMatch) {
-      return bracketMatch[2] || bracketMatch[1] || "その他";
+      // 例外: かっこ付きは、かっこ内アカウントを優先する
+      return bracketMatch[2] || bracketMatch[1] || "";
     }
 
-    const any = pickToken(value);
-    return any || "その他";
+    // 通常: かっこなしは、その文字列自体で分類する
+    return pickToken(value);
   }
 
   const grouped = new Map([
     ["メイン", []],
     ["サブ", []],
     ["サブサブ", []],
-    ["その他", []],
   ]);
 
   unfinishedRows.forEach(row => {
     const category = extractAccountCategory(row.account || "");
-    if (!grouped.has(category)) {
-      grouped.set(category, []);
+    if (!category || !grouped.has(category)) {
+      return;
     }
     grouped.get(category).push(row);
   });
@@ -2006,8 +1994,7 @@ async function loadPlan() {
   const accountGrid = document.createElement("div");
   accountGrid.className = "unfinished-account-grid";
 
-  const accountNames = ["メイン", "サブ", "サブサブ", "その他"]
-    .filter(account => (grouped.get(account) || []).length > 0 || account !== "その他");
+  const accountNames = ["メイン", "サブ", "サブサブ"];
 
   let unfinishedIdx = 0;
   accountNames.forEach(account => {
